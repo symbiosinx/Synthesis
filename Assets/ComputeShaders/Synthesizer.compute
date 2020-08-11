@@ -1,0 +1,144 @@
+﻿float rand(float2 xy, float seed=1){
+    return frac(sin(dot(xy, float2(12.9898,78.233))) * 43758.5453);
+	// return frac(tan(length(xy*1.61803398874989484820459 - xy)*seed)*xy.x);
+}
+
+float seed;
+
+#pragma kernel GenerateSignal
+
+float frequency;
+float speed;
+float acceleration;
+float jerk;
+
+float attackLength;
+float decayLength;
+float sustainLevel;
+float sustainLength;
+float releaseLength;
+
+int waveformIndex;
+float duty;
+float phaseShift;
+
+float getenvelope(float time) {
+	float s0 = clamp(smoothstep(0, attackLength, time), 0, 1);
+	float s1 = clamp(lerp(1, sustainLevel, smoothstep(
+		attackLength, attackLength + decayLength, time)), sustainLevel, 1);
+	float s2 = clamp(lerp(1, 0, smoothstep(attackLength + decayLength + sustainLength,
+		attackLength + decayLength + sustainLength + releaseLength, time)), 0, 1);
+	return s0 * s1 * s2;
+}
+
+float getfrequency(float time) {
+	return frequency + speed*time + .5 * acceleration * (time*time) + jerk * (time*time*time)/6.0;
+}
+
+float getwave(float timeIndex, float ps) {
+	float time = timeIndex / 44100.0;
+	float adsr = getenvelope(time);
+	float f = getfrequency(time);
+
+	float PI = 3.1415926535;
+
+	float t = time + ps;
+	float noiseTime = (timeIndex + ps * 44100) % floor(44100.0/f);
+
+	float SIN = sin(2.0 * PI * t * f);
+	float PULSE = sign(cos(2.0 * PI * t * f - duty*PI) - cos(duty * PI));
+	float SAW = fmod(t, 1.0/f)*f*2.0-1.0;
+	float TRI = abs(SAW)*2.0-1.0;
+	float TAN = fmod(tan(PI * t * f)+1.0, 2.0)-1.0;
+	float SEC = 1.0 / cos(2.0 * PI * t * f);
+	SEC = fmod(SEC-sign(SEC)+1.0, 2.0)-1.0;
+	float NOISE = rand(noiseTime, seed)*2.0-1.0;
+	float even = fmod(noiseTime, 2.0) == 0.0;
+	float SOFTNOISE = (f/44100.0) * ((noiseTime - 1.0 * (1.0-even)) / 2.0 - 1.0 * even) * 2.0;
+	float PURENOISE = rand(t, seed)*2.0-1.0;
+
+
+	return (
+		(waveformIndex == 0) * SIN +
+		(waveformIndex == 1) * PULSE +
+		(waveformIndex == 2) * SAW +
+		(waveformIndex == 3) * TRI +
+		(waveformIndex == 4) * TAN +
+		(waveformIndex == 5) * SEC +
+		(waveformIndex == 6) * NOISE +
+		(waveformIndex == 7) * SOFTNOISE +
+		(waveformIndex == 8) * PURENOISE
+	) * adsr;
+
+}
+
+RWStructuredBuffer<float> signal;
+
+[numthreads(1024, 1, 1)]
+void GenerateSignal(uint3 id : SV_DISPATCHTHREADID) {
+	int timeIndex = id.x;
+
+	float wave = getwave(timeIndex, 0) * .5 + getwave(timeIndex, phaseShift) * .5;
+	signal[timeIndex] = wave;
+		
+}
+
+
+
+#pragma kernel Fourier
+
+RWStructuredBuffer<float2> frequencies;
+int inputSize;
+int outputSize;
+float outputRange;
+
+[numthreads(1024, 1, 1)]
+void Fourier(uint3 id : SV_DISPATCHTHREADID) {
+
+	// int outputIndex = floor(id.x % outputSize);
+	// int inputIndex = floor(id.x % inputSize);
+	// float inputLength = inputSize * 0.00002267574;
+
+	// float f = outputIndex / (float)outputSize * outputRange;
+	// float time = inputIndex * 0.00002267574;
+
+	// float PI = 3.1415926535;
+	// float2 sample = input[inputIndex] * float2(cos(-PI * 2.0 * f * time), sin(-PI * 2.0 * f * time));
+
+	// output[outputIndex] += length(sample / (float)inputSize);
+	// output[outputIndex] += sample / (float)inputSize;
+	// output[outputIndex] += input[inputIndex] / (float)inputSize;
+	// output[outputIndex] += 0.00000001;
+	
+	float PI = 3.1415926535;
+	float time = id.x / 44100.0;
+
+	for (int i = 0; i < outputSize; i++) {
+
+		float f = i / (float)outputSize * outputRange;
+		float2 sample = signal[id.x] * float2(cos(-PI * 2.0 * f * time), sin(-PI * 2.0 * f * time));
+
+		frequencies[i] += sample / (float)inputSize;
+	}
+}
+
+
+
+
+#pragma kernel InverseFourier
+
+[numthreads(1024, 1, 1)]
+void InverseFourier(uint3 id : SV_DISPATCHTHREADID) {
+
+}
+
+// #pragma kernel Visualize
+
+// RWTexture2D result;
+
+// [numthreads(32, 32, 1)]
+// void Visualize(uint3 id : SV_DISPATCHTHREADID) {
+
+// 	result[id.xy] = output.
+
+// }
