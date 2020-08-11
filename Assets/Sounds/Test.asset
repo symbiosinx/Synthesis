@@ -15,7 +15,7 @@ MonoBehaviour:
   possibleWaveforms: 07000000
   duty: {x: 0.5, y: 0.5}
   phaseShift: {x: 0, y: 0}
-  frequency: {x: 140.8509, y: 140.8509}
+  frequency: {x: 518.66406, y: 518.66406}
   speed: {x: -87.4845, y: -87.4845}
   acceleration: {x: 0, y: 0}
   jerk: {x: 0, y: 0}
